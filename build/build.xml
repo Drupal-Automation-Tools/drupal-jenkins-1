@@ -558,7 +558,7 @@ specific prefix. -->
 
   <target name="coder-review-d7"
           description="Review code using Drupal 7 Coder module"
-          depends="init, clean">
+          depends="init, clean, site-install">
     <!-- Setup properties for running Coder Review.
          For some reason these properties are not passed correctly through to
          subtargets when defining them within the phingcall. -->
@@ -688,7 +688,7 @@ Execution of this target can be skipped by setting the
 -->
   <target name="simpletest"
           description="Run all unit tests"
-          depends="init, setup-phing-drush"
+          depends="init, setup-phing-drush, site-install"
           unless="project.simpletest.skip">
     <!-- Enable simpletest module. If using Drupal 6 the module will be
          downloaded as well. -->
