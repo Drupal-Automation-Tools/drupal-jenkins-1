@@ -43,7 +43,7 @@ installed as follows:
     pear channel-discover components.ez.no
     pear channel-discover pear.symfony-project.com
 
-    pear install phing/phing
+    pear install phing/phing-2.4.12
     pear install  -a phpmd/PHP_PMD
     pear install phpunit/phpcpd
     pear install phpunit/phploc
@@ -100,6 +100,7 @@ Drush Make and Simpletest support has been sponsored by [DBC](http://www.dbc.dk/
 </a>
 -->
 
+<!-- *Do not use any later versions than 2.4.12 due to [a bug in Phing](http://www.phing.info/trac/ticket/958)*. -->
 <project name="phing-drupal" default="build" phingVersion="2.4.11">
 
 <!-- ## Main targets -->
@@ -125,10 +126,7 @@ Make sure that our code is clean and functional. -->
                                  clean,
                                  lint-php-custom,
                                  lint-js-custom,
-                                 lint-css-custom,
-                                 check-php-debug,
-                                 check-js-debug,
-                                 simpletest"/>
+                                 lint-css-custom"/>
 
 <!-- ### Analyze code
 
@@ -139,19 +137,7 @@ complies with coding standards. -->
                                   clean,
                                   phploc,
                                   phpmd,
-                                  phpcpd">
-    <!-- Moved inside target to support properties in target name -->
-    <phingcall target="coder-review-d${drupal.version}">
-      <!-- Run the target as if it was executed from the Drupal root
-           directory. -->
-      <property name="project.basedir" value="${project.drupal.dir}"/>
-      <!-- We already have a clean environment so avoid further cleaning. -->
-      <property name="project.cleaned" value="1"/>
-      <!-- Make will run again as a part of the `init` target. We already have
-           a working site so skip that. -->
-      <property name="project.make.skip" value="1"/>
-    </phingcall>
-  </target>
+                                  phpcpd"/>
 
 <!-- ### Generate documentation
 
@@ -532,6 +518,7 @@ statistics. -->
     <phingcall target="setup-git-repo">
       <property name="repo.dir" value="${project.toolsdir}/phing-phploc"/>
       <property name="repo.url" value="${phing.phploc.repository.url}" />
+      <property name="repo.revision" value="${phing.phploc.repository.revision}" />
     </phingcall>
     <!-- Register the custom Phing task -->
     <taskdef name="phploc" classname="PHPLocTask"
@@ -789,7 +776,7 @@ This target sets up many of the common resources used throughout the build.
 All other targets except dependencies for this target should depend on this
 unless specifically stated why. -->
   <target name="init"
-          depends="load-properties, setup-dirs, make, setup-filesets"
+          depends="load-properties, setup-dirs, setup-filesets"
           unless="project.initialized">
     <!-- Set property to prevent target from being executed multiple times -->
     <property name="project.initialized" value="true"/>
@@ -907,92 +894,6 @@ called from `init` target. -->
               value="${project.builddir}/tests" />
   </target>
 
-<!-- ### Drush Make
-
-Download and install the source code for the site using Drush Make.
-
-This target is only executed if the project uses make files as configured
-in the `build.properties` file. Execution can also be skipped by setting the
-`project.make.skip` property from the command line or in other targets.
-
-This is part of the initialization of the build. This target should only be
-called from `init` target. -->
-  <target name="make"
-          depends="load-properties, setup-phing-drush"
-          if="drupal.make.file">
-    <if>
-      <or>
-        <not><isset property="project.make.skip"/></not>
-        <not><istrue value="${project.make.skip}"/></not>
-      </or>
-      <then>
-        <!-- Delete any prexisting builds -->
-        <delete dir="${project.drupal.dir}"/>
-
-        <!-- If the make file does not include a core Drupal project we need
-             to download one separately. This should be defined in
-             `build.properties`. -->
-        <if>
-          <and>
-            <isset property="drupal.make.nocore"/>
-            <istrue value="${drupal.make.nocore}"/>
-          </and>
-          <then>
-            <!-- Download the appropriate version of Drupal -->
-            <drush command="dl" assume="yes">
-              <param>drupal-${drupal.version}</param>
-              <option name="drupal-project-rename">${drupal.make.dir}</option>
-            </drush>
-
-            <!-- Make the project in the project code directory. If using
-                 a directory inside the `sites` folder modules can be tested
-                 faster and easier when using the minimal profile. -->
-            <drush command="make" assume="yes">
-              <param>${drupal.make.file}</param>
-              <option name="contrib-destination">${drupal.make.dir}/${project.code.dir}</option>
-              <option name="no-core"/>
-            </drush>
-
-            <!-- Copy the install profile bundled with the make file to the
-                 appropriate directory. -->
-            <copy todir="${project.drupal.dir}/profiles/${drupal.profile}/">
-              <fileset dir="${project.basedir}">
-                <include name="${drupal.profile}.*" />
-              </fileset>
-            </copy>
-          </then>
-          <else>
-            <drush command="make" assume="yes">
-              <param>${drupal.make.file}</param>
-              <param>${drupal.make.dir}</param>
-            </drush>
-          </else>
-        </if>
-
-        <if>
-          <isset property="drupal.make.rewritebase" />
-          <then>
-            <reflexive file="${project.drupal.dir}/.htaccess">
-              <filterchain>
-                <replaceregexp>
-                  <regexp pattern="# RewriteBase [\w/]*" replace="RewriteBase ${drupal.make.rewritebase}"/>
-                </replaceregexp>
-              </filterchain>
-            </reflexive>
-          </then>
-        </if>
-
-        <!-- Set property to prevent target from being executed multiple times -->
-        <property name="project.make.skip" value="true"/>
-      </then>
-      <else>
-        <echo>
-          Skipping drush make.${line.separator}
-          drupal.make.skip has been set to ${project.make.skip}.
-        </echo>
-      </else>
-    </if>
-  </target>
 
 <!-- ### Setup file sets
 
@@ -1044,6 +945,7 @@ called from `init` target. -->
       <exclude name="**/*.field_group.inc" />
       <exclude name="**/*.layouts.inc" />
       <exclude name="**/*.pages_default.inc" />
+      <exclude name="**/*.panelizer.inc" />
       <exclude name="**/*.panels_default.inc" />
       <exclude name="**/*.strongarm.inc" />
       <exclude name="**/*.views_default.inc" />
@@ -1086,6 +988,40 @@ called from `init` target. -->
     </fileset>
 
   </target>
+  
+  <!-- ### Setup permissions
+
+Set permissions for certain files correctly after it has been built. This is
+required to support using the site after it has been built e.g. for conducting
+tests and site allow it to be rebuilt later on. 
+
+By default the built site will be owned by the Jenkins user and allow 
+others to read. We allow read, write and execute access for all to give users
+such as apache running the webserver the necessary permissions. -->
+    <target name="setup-permissions"
+            depends="setup-dirs">
+      <!-- Allow write access to files directory. -->
+      <chmod mode="0777" failonerror="false">
+        <fileset dir="${project.drupal.dir}">
+          <patternset>
+            <include name="sites/default/**/*"/>
+          </patternset>
+        </fileset>
+      </chmod>
+      <!-- If the build uses SQLite then we update permissions to the
+           database file and the directory containing the file. -->
+      <if>
+        <contains string="${drupal.db.url}" substring="sqlite"/>
+        <then>
+          <php expression="dirname(substr('${drupal.db.url}', 7));"
+               returnProperty="drupal.sqlite.dir" />
+          <php expression="basename(substr('${drupal.db.url}', 7));"
+               returnProperty="drupal.sqlite.file" />
+          <chmod file="${drupal.sqlite.dir}" mode="0777" failonerror="true"/>
+          <chmod file="${drupal.sqlite.file}" mode="0777" failonerror="true"/>
+        </then>
+      </if>
+    </target>
 
 <!-- ### Clean working environment  -->
   <target name="clean"
@@ -1098,15 +1034,6 @@ called from `init` target. -->
     <delete dir="${project.coveragedir}"/>
     <delete dir="${project.logdir}"/>
     <delete dir="${project.testdir}"/>
-    <!-- Verbose. We need to make sure any database is deleted. Reinstalling
-         the site with an existing database causes the build to fail. -->
-    <delete file="${project.drupal.dir}/database.sqlite" verbose="true" />
-    <!-- Remove leftover Drupal simpletest databases -->
-    <delete>
-      <fileset dir="${project.basedir}">
-        <include name="database.sqlite-simpletest*"/>
-      </fileset>
-    </delete>
 
     <!-- Recreate directories for artifacts -->
     <mkdir dir="${project.toolsdir}"/>
@@ -1131,14 +1058,32 @@ Configuration of which installation profile and database to use in done in
       <option name="db-url">${drupal.db.url}</option>
       <param>${drupal.profile}</param>
     </drush>
-    <!-- Fix permissions for the default site directory and settings. The
-         owner must be able to delete the directories during subsequent
-         builds. -->
-    <chmod file="${project.drupal.dir}/sites/default/"
-           mode="0755" failonerror="true"/>
-    <chmod file="${project.drupal.dir}/sites/default/default.settings.php"
-           mode="0755" failonerror="true"/>
+    
+    <phingcall target="setup-permissions"/>
+    
+    <!-- Enable RewriteBase in .htaccess if the installation is to be
+exposed through Apache with virtual document root as clean urls are enabled 
+by default.
 
+Keep legacy support for drupal.make.rewritebase when this was handled as a
+part of make target.-->
+    <condition property="drupal.rewritebase"
+               value="${drupal.make.rewritebase}">
+      <isset property="drupal.make.rewritebase"/>
+    </condition>
+    <if>
+      <isset property="drupal.rewritebase" />
+      <then>
+        <reflexive file="${project.drupal.dir}/.htaccess">
+          <filterchain>
+            <replaceregexp>
+              <regexp pattern="# RewriteBase [\w/]*" replace="RewriteBase ${drupal.rewritebase}"/>
+            </replaceregexp>
+          </filterchain>
+        </reflexive>
+      </then>
+    </if>
+    
     <!-- Set property to prevent target from being executed multiple times -->
     <property name="project.installed" value="true"/>
   </target>
@@ -1278,52 +1223,5 @@ Configuration of which installation profile and database to use in done in
      <property name="project.rhino.setup" value="true" />
    </target>
 
-   <!-- ### Build documentation using Phrocco
-
-Generate documentation for the build script using [Phrocco](https://github.com/oneblackbear/phrocco) and prepare for pushing changes to [GitHub pages](http://pages.github.com/).
-
-To use this task you mush have a version of Phrocco with support for XML
-parsing installed. The task is primarily for template developers. -->
-   <target name="phrocco"
-           depends="clean">
-     <!-- Determine current branch -->
-     <exec command="git status --branch --short"
-           outputProperty="phrocco.code.status" />
-     <php expression="array_shift(explode('...', trim('${phrocco.code.status}', '# '), 2))"
-          returnProperty="phrocco.code.branch"/>
-
-     <!-- Generate documentation in the root build directory -->
-     <exec command="phrocco -i . -o . -l xml"
-           passthru="true" checkreturn="true" />
-     <!-- Checkout the GitHub pages branch -->
-     <exec command="git checkout gh-pages"
-           passthru="true" checkreturn="true"/>
-     <!-- We use the documentation for build.xml and root file so rename
-          it to index.html -->
-     <move file="build.html" tofile="index.html" overwrite="true"
-           haltonerror="true" />
-
-     <property name="phrocco.commit.mode" value=""/>
-     <!-- If the local documentation branch is ahead then we have other
-          changes which have not been pushed yet. These have probably also
-          been generated by this script so amend these changes. -->
-     <exec command="git status --branch --short"
-           outputProperty="phrocco.docs.status" />
-     <if>
-       <contains string="${phrocco.docs.status}" substring="[ahead"/>
-       <then>
-         <property name="phrocco.commit.mode" value="--amend"
-                   override="true" />
-       </then>
-     </if>
-
-     <!-- Commit the changes -->
-     <exec command="git commit --all -m 'Documentation update' ${phrocco.commit.mode}"
-           passthru="true" checkreturn="true"/>
-
-     <!-- Return to the main branch -->
-     <exec command="git checkout ${phrocco.code.branch}"
-           passthru="true" checkreturn="true"/>
-   </target>
 
 </project>
